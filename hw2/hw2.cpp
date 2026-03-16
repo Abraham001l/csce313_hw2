@@ -5,6 +5,7 @@
 #include "Pipe.h"
 #include "Robot.h"
 #include "SearchStructures.h"
+#include "Logger.h"
 
 void parse_input_arguments(int argc, char* argv[], UCHAR& planet, DWORD& cave, DWORD& num_threads) {
 	if (argc != 4)
@@ -50,7 +51,7 @@ int main(int argc, char* argv[])
 
 	// creating d
 	bitmap d;
-	d.init(planet);
+	d.init();
 
 	// creating qc and qf and q_holder
 	queue q1;
@@ -64,6 +65,20 @@ int main(int argc, char* argv[])
 	bool qc = 0;
 	bool qf = 1;
 
+	// initializing level
+	int level = 0;
+
+	// initializing cpu stats
+	CPU cpu_stats = CPU();
+
+	// initializing vars for stats
+	LONG64 n_rooms_processed = 0;
+	LONG64 n_total_returns = 0;
+	LONG64 n_unique_returns = 0;
+
+	// initializing finished
+	bool finished = false;
+
 	// initializing mutex, semaphore, and end event for search
 	HANDLE mutex = CreateMutex(NULL, FALSE, NULL);
 	HANDLE sema = CreateSemaphore(NULL, 0, LONG_MAX, NULL);
@@ -72,13 +87,12 @@ int main(int argc, char* argv[])
 		printf("Error %d creating synchronization objects\n", GetLastError());
 		exit(-1);
 	}
-
 	// running robots
 	HANDLE* thread_handles = (HANDLE*)malloc(sizeof(HANDLE) * num_threads);
 	robot_init* thread_params = (robot_init*)malloc(sizeof(robot_init) * num_threads);
 
 	for (int i = 0; i < num_threads; i++) {
-		thread_params[i] = { pi, i, &mutex, &sema, &end, q_holder, &d, planet, &working, &qc, &qf };
+		thread_params[i] = { pi, i, &mutex, &sema, &end, q_holder, &d, planet, &working, &qc, &qf, &level, &n_rooms_processed, &n_total_returns, &n_unique_returns, &finished };
 		thread_handles[i] = CreateThread(NULL, 0, Robot::search, &thread_params[i], 0, NULL);
 		if (thread_handles[i] == NULL)
 		{
@@ -88,10 +102,15 @@ int main(int argc, char* argv[])
 		SetThreadPriority(thread_handles[i], THREAD_PRIORITY_IDLE);
 	}
 
+	logger_data logger_data = { &mutex, &end, q_holder, &d, &qc, &qf, &working, &cpu_stats, &n_rooms_processed, &n_total_returns, &n_unique_returns, &finished };
+	HANDLE logger_handle = CreateThread(NULL, 0, Logger::log, &logger_data, 0, NULL);
+
 	for (int i = 0; i < num_threads; i++) {
 		WaitForSingleObject(thread_handles[i], INFINITE);
 		CloseHandle(thread_handles[i]);
 	}
+	WaitForSingleObject(logger_handle, INFINITE);
+	CloseHandle(logger_handle);
 
 	free(thread_handles);
 	free(thread_params);

@@ -3,7 +3,7 @@
 #include "pch.h"
 #include "Pipe.h"
 
-Pipe::Pipe() : pipe(nullptr), buffer_size(128), last_bytes_read(0), last_bytes_written(0), buffer(malloc(128)) {}
+Pipe::Pipe() : pipe(nullptr), buffer_size(40000), last_bytes_read(0), last_bytes_written(0), buffer(malloc(40000)) {}
 
 Pipe::~Pipe() {
 	free(buffer);

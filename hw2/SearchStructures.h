@@ -7,27 +7,29 @@
 
 class bitmap {
 	DWORD* table;
-	LONG n_discovered = 0;
-	int planet_num;
 public:
-	void init(int planet_num) {
-		this->planet_num = planet_num;
-		table = (DWORD*)calloc((((1ULL)<<planet_num) >> 5), sizeof(DWORD));
+	LONG n_discovered = 0;
+	void init() {
+		table = (DWORD*)calloc((((1ULL)<<32) >> 5), sizeof(DWORD));
 	}
 	bool interlocked_test_and_set(DWORD room_id) {
-		room_id = room_id >> (32 - planet_num);
 		DWORD offset = room_id >> 5; // room_id / 32
 		DWORD bit = room_id & 0x1F; // room_id % 32
 		DWORD mask = 1UL << bit;
+
+		if ((table[offset] & mask) != 0) {
+			return false;
+		}
+
 		DWORD previous_mask = InterlockedOr((LONG volatile*)(table + offset), mask);
 		if ((previous_mask & mask) == 0) {
-			n_discovered++;
+			InterlockedIncrement(&n_discovered);
 			return true;
 		}
 		return false;
 	}
 	LONG read_nd() {
-		return InterlockedExchangeAdd(&n_discovered, 0);
+		return InterlockedAdd(&n_discovered, 0);
 	}
 };
 
@@ -47,6 +49,9 @@ public:
 		space_allocated = 10000;
 		q_size = 0;
 	}
+	~queue() {
+		HeapDestroy(heap);
+	}
 	void push(DWORD* array, DWORD n_items) {
 		// check if enough space allocated
 		if (q_size + n_items > space_allocated) {
@@ -61,17 +66,25 @@ public:
 				exit(-1);
 			}
 		}
-		memcpy(buffer + tail, array, sizeof(DWORD) * n_items);
-		tail += n_items;
+		memcpy(buffer + q_size, array, sizeof(DWORD) * n_items);
 		q_size += n_items;
 	};
-	DWORD pop(DWORD*& array, DWORD batch_size) {
+	DWORD pop(DWORD* array, DWORD batch_size) {
 		DWORD items_to_pop = min(batch_size, q_size);
-		array = (DWORD*)malloc(sizeof(DWORD) * items_to_pop);
-		memcpy(array, buffer, sizeof(DWORD) * items_to_pop);
-		memmove(buffer, buffer + items_to_pop, sizeof(DWORD) * (q_size - items_to_pop));
+		memcpy(array, buffer + q_size - items_to_pop, sizeof(DWORD) * items_to_pop);
 		q_size -= items_to_pop;
-		tail -= items_to_pop;
+		
+		// deallocating if used space < half of capacity
+		if (q_size < space_allocated / 2) {
+			space_allocated /= 2;
+			buffer = (DWORD*)HeapReAlloc(heap, HEAP_ZERO_MEMORY, buffer, sizeof(DWORD) * space_allocated);
+
+			if (buffer == NULL) {
+				printf("Error %d reallocating queue buffer\n", GetLastError());
+				exit(-1);
+			}
+		}
+
 		return items_to_pop;
 	}
 	DWORD size() {
@@ -79,5 +92,8 @@ public:
 	}
 	DWORD* get_buffer() {
 		return buffer;
+	}
+	void reset_q_size() {
+		q_size = 0;
 	}
 };

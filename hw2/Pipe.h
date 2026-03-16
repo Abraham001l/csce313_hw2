@@ -70,6 +70,11 @@ struct robot_init {
 	DWORD* working;
 	bool* qc;
 	bool* qf;
+	int* level;
+	LONG64* n_rooms_processed;
+	LONG64* n_total_returns;
+	LONG64* n_unique_returns;
+	bool* finished;
 };
 #pragma pack(pop)
 

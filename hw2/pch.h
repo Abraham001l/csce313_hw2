@@ -10,5 +10,6 @@
 #include <Windows.h>
 #include <iostream>
 #include <ctime>
+#include "cpu.h"
 
 #endif //PCH_H
